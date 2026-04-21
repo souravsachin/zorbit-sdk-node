@@ -2,6 +2,60 @@
 export { jwtAuthMiddleware, JwtAuthOptions } from './middleware/jwt-auth.middleware';
 export { authorizationMiddleware, AuthorizationOptions } from './middleware/authorization.middleware';
 export { namespaceMiddleware, NamespaceMiddlewareOptions } from './middleware/namespace.middleware';
+export { createQuotaManager, clearQuotaStore, QuotaConfig } from './middleware/quota-manager';
+
+// Guards
+export { JwtAuthGuard, JwtGuardOptions } from './guards/jwt-auth.guard';
+
+// Interceptors
+export {
+  createPIIDetector,
+  detectPII,
+  BUILTIN_PATTERNS,
+  PIIDetectorConfig,
+  PIIPattern,
+  PIIDetection,
+} from './interceptors/pii-detector';
+export {
+  createAuditLogger,
+  computeChanges,
+  buildAuditEvent,
+  AuditLoggerConfig,
+  AuditEvent,
+  AuditChange,
+} from './interceptors/audit-logger';
+
+// Clients
+export {
+  PiiVaultClient,
+  PiiVaultClientConfig,
+  TokenizeResult,
+  RevealResult,
+} from './clients/pii-vault.client';
+export {
+  FormBuilderClient,
+  FormBuilderClientConfig,
+  FormTemplate,
+  FormSubmission,
+} from './clients/form-builder.client';
+export {
+  DataTableClient,
+  DataTableClientConfig,
+  DataTablePageConfig,
+  DataTableColumn,
+  DataTableDataSource,
+  DataTableFilterDef,
+  DataTablePage,
+  DataTableQuery,
+} from './clients/datatable.client';
+
+// Database
+export {
+  createMongoConnection,
+  createMongooseModuleConfig,
+  ensureDirectConnection,
+  MongoAdapterConfig,
+} from './database/mongo-adapter';
 
 // Kafka
 export { ZorbitKafkaClient, ZorbitKafkaConfig } from './kafka/kafka-client';
@@ -26,3 +80,38 @@ export {
 // Utils
 export { generateHashId, validateHashId } from './utils/hash-id';
 export { NamespaceType, parseNamespace, validateNamespaceAccess, Namespace } from './utils/namespace';
+
+// NestJS Guards, Decorators, Strategy, Base Controllers
+// (requires @nestjs/* peer dependencies)
+export {
+  ZorbitJwtGuard,
+  ZorbitNamespaceGuard,
+  ZorbitPrivilegeGuard,
+  Public,
+  RequirePrivileges,
+  ZorbitJwtStrategy,
+  ZorbitHealthControllerBase,
+  ZorbitManifestControllerBase,
+  ZorbitSeedControllerBase,
+  IS_PUBLIC_KEY,
+  REQUIRED_PRIVILEGES_KEY,
+} from './nestjs';
+export type { ZorbitJwtPayload, ZorbitSeedResult } from './nestjs';
+
+// Canonical JSON + HMAC primitives (Tier 1 SDK extraction)
+export { canonicalJson, canonicalize, signHmac, verifyHmac } from './canonical-json';
+export { normaliseDependenciesV2, DependenciesV2 } from './dependencies';
+
+// Module self-announcement service (Kafka + HMAC + retry + nav-cache-notify)
+export {
+  ModuleAnnouncementService,
+  ModuleManifestAnnouncementFields,
+  ModuleAnnouncementMessage,
+  ModuleAnnouncementOptions,
+} from './module-announcement';
+
+// Audit / generic Kafka event publisher
+export { AuditEventPublisher, ZorbitAuditEventEnvelope } from './audit';
+
+// Shared JWT payload type (SDK-level canonical form)
+export type { ZorbitJwtPayload as ZorbitJwtPayloadShared } from './types/jwt-payload';
