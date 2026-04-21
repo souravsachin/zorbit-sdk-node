@@ -126,6 +126,31 @@ export function buildEntityController<T extends Record<string, unknown>>(
       }
     }
 
+    async exportHandler(
+      scopeId: string,
+      queryRaw: any,
+      req: Request,
+      res: Response,
+    ): Promise<void> {
+      const query = parseQuery(queryRaw);
+      const actor = actorFromReq(req);
+      try {
+        const rows = await this.service.exportCsv(scopeId, query, actor);
+        const fields = declaration.fields.map((f) => f.key);
+        const csv = rowsToCsv(rows as Array<Record<string, unknown>>, {
+          fields,
+        });
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${declaration.entity}.csv"`,
+        );
+        res.status(200).send(csv);
+      } catch (e) {
+        throw toHttp(e);
+      }
+    }
+
     async detailHandler(
       scopeId: string,
       hashId: string,
@@ -195,31 +220,6 @@ export function buildEntityController<T extends Record<string, unknown>>(
         throw toHttp(e);
       }
     }
-
-    async exportHandler(
-      scopeId: string,
-      queryRaw: any,
-      req: Request,
-      res: Response,
-    ): Promise<void> {
-      const query = parseQuery(queryRaw);
-      const actor = actorFromReq(req);
-      try {
-        const rows = await this.service.exportCsv(scopeId, query, actor);
-        const fields = declaration.fields.map((f) => f.key);
-        const csv = rowsToCsv(rows as Array<Record<string, unknown>>, {
-          fields,
-        });
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename="${declaration.entity}.csv"`,
-        );
-        res.status(200).send(csv);
-      } catch (e) {
-        throw toHttp(e);
-      }
-    }
   }
 
   // --- apply decorators imperatively ---
@@ -228,6 +228,30 @@ export function buildEntityController<T extends Record<string, unknown>>(
   UseGuards(ZorbitJwtGuard, ZorbitNamespaceGuard, ZorbitPrivilegeGuard)(
     DynamicEntityController,
   );
+
+  // Set `design:paramtypes` metadata for each handler so tools that
+  // reflect on types (e.g. @nestjs/swagger's parameter-metadata-accessor)
+  // don't crash. All params are treated as `Object` — we don't know their
+  // exact types at code-gen time.
+  const setParamTypes = (method: string, count: number) => {
+    const types: any[] = Array.from({ length: count }, () => Object);
+    try {
+      Reflect.defineMetadata(
+        'design:paramtypes',
+        types,
+        DynamicEntityController.prototype,
+        method,
+      );
+    } catch {
+      // reflect-metadata not present — Nest will have warned already
+    }
+  };
+  setParamTypes('listHandler', 3);
+  setParamTypes('createHandler', 3);
+  setParamTypes('exportHandler', 4);
+  setParamTypes('detailHandler', 3);
+  setParamTypes('updateHandler', 5);
+  setParamTypes('deleteHandler', 3);
 
   // list
   decorateMethod(DynamicEntityController, 'listHandler', [

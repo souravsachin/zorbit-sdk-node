@@ -12,7 +12,7 @@
  * naming.
  */
 import type { Repository } from 'typeorm';
-import { In, Like, Between, MoreThanOrEqual, LessThanOrEqual } from 'typeorm';
+import { In, Like, Between, MoreThanOrEqual, LessThanOrEqual, Not } from 'typeorm';
 import type { EntityDeclaration } from './entity-schema';
 import { generateHashId } from '../utils/hash-id';
 import type { ParsedQuery, FilterShape } from './filter-parser';
@@ -103,8 +103,16 @@ export function createEntityService<
       where[scopeField] = scopeId;
     }
     if (softDelete) {
-      // Exclude soft-deleted rows by default
-      where.status = (where.status as string) || notEqualsStub('deleted');
+      // Exclude soft-deleted rows by default. Only applies when the
+      // entity has a `status` field with a `deleted` value — otherwise
+      // we leave the where clause alone (the repo probably implements
+      // a different soft-delete convention).
+      const hasDeletedStatus = cfg.declaration.fields.some(
+        (f) => f.key === 'status' && f.type === 'enum' && f.values?.includes('deleted'),
+      );
+      if (hasDeletedStatus && where.status === undefined) {
+        where.status = Not('deleted');
+      }
     }
 
     for (const [f, shape] of Object.entries(query.filters)) {
@@ -355,16 +363,6 @@ function filterShapeToTypeOrm(shape: FilterShape): unknown {
   if (from) return MoreThanOrEqual(from);
   if (to) return LessThanOrEqual(to);
   return undefined;
-}
-
-/**
- * Marker for "soft-delete: exclude status='deleted'". The controller
- * factory replaces this with TypeORM's `Not(...)` when converting the
- * synthesized where clause. We keep it as a plain object so the parsed
- * query still round-trips cleanly in tests.
- */
-function notEqualsStub(value: string): { __not: string } {
-  return { __not: value };
 }
 
 /**
