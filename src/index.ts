@@ -115,3 +115,50 @@ export { AuditEventPublisher, ZorbitAuditEventEnvelope } from './audit';
 
 // Shared JWT payload type (SDK-level canonical form)
 export type { ZorbitJwtPayload as ZorbitJwtPayloadShared } from './types/jwt-payload';
+
+// Entity CRUD — config-driven REST CRUD factory (EPIC 10)
+export {
+  ZorbitEntityCrudModule,
+  createEntityService,
+  buildEntityController,
+  parseEntityDeclaration,
+  safeParseEntityDeclaration,
+  loadEntitiesFromDir,
+  parseQuery as parseEntityCrudQuery,
+  rowsToCsv,
+  maskRows,
+  maskRow,
+  shouldMask,
+  applyPattern,
+  emitAudit,
+  diffFields,
+  redactSensitive,
+  fieldToColumnDescriptor,
+  EntitySchemaV1,
+  ConcurrencyConflictError,
+  EntityNotFoundError,
+  ValidationFailedError,
+} from './entity-crud';
+export type {
+  EntityDeclaration,
+  EntityField,
+  EntityFieldType,
+  EntityNamespace,
+  MaskingRule,
+  MaskingContext,
+  CrudActor,
+  ListResult,
+  ConcurrencyCheck,
+  EntityServiceConfig,
+  CustomHandlers,
+  ControllerFactoryInput,
+  ZorbitEntityCrudRegisterOptions,
+  ParsedQuery,
+  RawQuery,
+  FilterShape,
+  EntityLoadResult,
+  ColumnDescriptor,
+  CrudOp,
+  EmitAuditOptions,
+  CsvExportOptions,
+} from './entity-crud';
