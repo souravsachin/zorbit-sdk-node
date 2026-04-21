@@ -21,7 +21,13 @@ import { ZorbitJwtPayload } from './jwt.strategy';
  *
  * Privilege codes follow dot notation: {module}.{resource}.{action}
  * Example: 'datatable.page.create', 'platform.seed.execute'
+ *
+ * Superadmin bypass: a user whose JWT carries `platform.superadmin.bypass`
+ * bypasses all privilege checks. This is the replacement for the legacy
+ * role-name short-circuit that the SDK migration removed.
  */
+export const SUPERADMIN_BYPASS_PRIVILEGE = 'platform.superadmin.bypass';
+
 @Injectable()
 export class ZorbitPrivilegeGuard implements CanActivate {
   private readonly logger = new Logger(ZorbitPrivilegeGuard.name);
@@ -60,6 +66,15 @@ export class ZorbitPrivilegeGuard implements CanActivate {
     }
 
     const userPrivileges = new Set(user.privileges || []);
+
+    // Superadmin bypass — user with 'platform.superadmin.bypass' privilege
+    // passes all @RequirePrivileges() checks. Used for platform operators
+    // who need to cross any module's privilege fence without an exhaustive
+    // per-privilege grant.
+    if (userPrivileges.has(SUPERADMIN_BYPASS_PRIVILEGE)) {
+      return true;
+    }
+
     const missingPrivileges = requiredPrivileges.filter((p) => !userPrivileges.has(p));
 
     if (missingPrivileges.length > 0) {

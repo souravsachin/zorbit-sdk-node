@@ -225,4 +225,23 @@ describe('ZorbitPrivilegeGuard', () => {
       ),
     ).toThrow(/m\.r\.read/);
   });
+
+  it('bypasses all checks for users with platform.superadmin.bypass', () => {
+    const guard = new ZorbitPrivilegeGuard(
+      makeReflector({
+        [REQUIRED_PRIVILEGES_KEY]: ['anything.very.strict', 'another.one'],
+      }),
+    );
+    expect(
+      guard.canActivate(
+        makeContext({
+          user: {
+            sub: 'U-SA',
+            type: 'access',
+            privileges: ['platform.superadmin.bypass'],
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
 });
