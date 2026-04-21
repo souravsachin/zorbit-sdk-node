@@ -14,12 +14,21 @@ export interface ZorbitJwtPayload {
   org: string;
   /** User display name */
   displayName?: string;
+  /** Legacy name alias — some services issue tokens with `name` instead of displayName */
+  name?: string;
   /** Email token (PII-tokenized) */
   email?: string;
   /** V2 privilege codes resolved at login time */
   privileges?: string[];
-  /** Token type — only 'access' tokens are valid for API requests */
-  type: 'access' | 'refresh' | 'mfa_temp';
+  /** Legacy role field — prefer privileges; retained for back-compat */
+  role?: string;
+  /** Token type — only 'access' tokens are valid for API requests.
+   *  Optional for back-compat with tokens minted before SDK enforcement. */
+  type?: 'access' | 'refresh' | 'mfa_temp';
+  /** Issued-at (unix seconds) — filled by jsonwebtoken */
+  iat?: number;
+  /** Expiry (unix seconds) — filled by jsonwebtoken */
+  exp?: number;
 }
 
 /**
@@ -44,7 +53,8 @@ export class ZorbitJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
    * Rejects non-access tokens. Returns the payload as req.user.
    */
   validate(payload: ZorbitJwtPayload): ZorbitJwtPayload {
-    if (payload.type !== 'access') {
+    // Older tokens may omit 'type'; accept them for back-compat.
+    if (payload.type && payload.type !== 'access') {
       throw new UnauthorizedException('Only access tokens are accepted');
     }
     return payload;
