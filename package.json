@@ -1,13 +1,22 @@
 {
   "name": "@zorbit-platform/sdk-node",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Node.js/TypeScript SDK for building applications on the Zorbit platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "scripts/prune-peer-deps.js",
+    "README.md",
+    "CLAUDE.md",
+    "ENTITY-CRUD-DI-FIX.md"
+  ],
+  "bundledDependencies": [],
   "scripts": {
     "build": "tsc",
     "test": "jest",
     "lint": "tsc --noEmit",
+    "postinstall": "node scripts/prune-peer-deps.js",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
