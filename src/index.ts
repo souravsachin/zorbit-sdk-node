@@ -48,6 +48,15 @@ export {
   DataTablePage,
   DataTableQuery,
 } from './clients/datatable.client';
+export {
+  SecretsVaultClient,
+  SecretsVaultClientConfig,
+  VaultSecretMeta,
+  VaultSecretValue,
+  VaultSecretVersion,
+  VaultWriteResult,
+  VaultRotateResult,
+} from './clients/secrets-vault.client';
 
 // Database
 export {
