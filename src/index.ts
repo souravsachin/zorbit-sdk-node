@@ -116,6 +116,23 @@ export { AuditEventPublisher, ZorbitAuditEventEnvelope } from './audit';
 // Shared JWT payload type (SDK-level canonical form)
 export type { ZorbitJwtPayload as ZorbitJwtPayloadShared } from './types/jwt-payload';
 
+// Integration Runner — shared adapter-based run orchestrator (RPA / API / SOAP / SFTP / DB)
+// Ported pattern from RPAg4. Portal-agnostic.
+export {
+  IntegrationRunnerService,
+  IntegrationRunnerModule,
+  IntegrationRunnerDeps,
+  AdapterDescriptor,
+  AdapterExecutor,
+  AuditSink,
+  IntegrationRunEvent,
+  IntegrationRunInput,
+  IntegrationRunResult,
+  IntegrationRunStatus,
+  IntegrationRunStore,
+  SecretsResolver,
+} from './integration-runner';
+
 // Entity CRUD — config-driven REST CRUD factory (EPIC 10)
 export {
   ZorbitEntityCrudModule,
