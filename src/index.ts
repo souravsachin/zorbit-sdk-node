@@ -188,10 +188,3 @@ export type {
   EmitAuditOptions,
   CsvExportOptions,
 } from './entity-crud';
-
-// Wildcard privilege interpreter (slim-JWT companion, cycle 103)
-export {
-  hasPrivilege,
-  hasAllPrivileges,
-  matchWildcard,
-} from "./auth/wildcard-checker";

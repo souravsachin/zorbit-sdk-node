@@ -8,7 +8,6 @@ import {
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from './decorators';
 import { ZorbitJwtPayload } from './jwt.strategy';
-import { hasPrivilege } from '../auth/wildcard-checker';
 
 /**
  * Privilege code that grants cross-organization access.
@@ -92,11 +91,7 @@ export class ZorbitNamespaceGuard implements CanActivate {
    * This is privilege-based — no role name checking.
    */
   private hasCrossOrgPrivilege(user: ZorbitJwtPayload): boolean {
-    // Slim-JWT aware: accept the explicit code OR a wildcard claim that covers it.
-    const wildcards = (user as ZorbitJwtPayload & { wildcards?: string[] }).wildcards || [];
-    if (Array.isArray(user.privileges) && user.privileges.includes(CROSS_ORG_PRIVILEGE)) {
-      return true;
-    }
-    return hasPrivilege({ privileges: user.privileges, wildcards }, CROSS_ORG_PRIVILEGE);
+    return Array.isArray(user.privileges) &&
+      user.privileges.includes(CROSS_ORG_PRIVILEGE);
   }
 }
