@@ -99,13 +99,15 @@ export {
   Public,
   RequirePrivileges,
   ZorbitJwtStrategy,
+  ZorbitAuthModule,
+  ZORBIT_AUTH_OPTIONS,
   ZorbitHealthControllerBase,
   ZorbitManifestControllerBase,
   ZorbitSeedControllerBase,
   IS_PUBLIC_KEY,
   REQUIRED_PRIVILEGES_KEY,
 } from './nestjs';
-export type { ZorbitJwtPayload, ZorbitSeedResult } from './nestjs';
+export type { ZorbitJwtPayload, ZorbitSeedResult, ZorbitAuthOptions } from './nestjs';
 
 // Canonical JSON + HMAC primitives (Tier 1 SDK extraction)
 export { canonicalJson, canonicalize, signHmac, verifyHmac } from './canonical-json';

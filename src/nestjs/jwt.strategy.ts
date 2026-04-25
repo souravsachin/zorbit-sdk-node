@@ -1,7 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { ZORBIT_AUTH_OPTIONS, ZorbitAuthOptions } from './zorbit-auth-options';
 
 /**
  * JWT payload structure issued by zorbit-identity.
@@ -35,17 +36,64 @@ export interface ZorbitJwtPayload {
  * Reusable Passport JWT strategy for all Zorbit NestJS services.
  * Validates Bearer tokens issued by zorbit-identity.
  *
- * Register via ZorbitAuthModule or directly in your module's providers:
- *   { provide: 'JWT_STRATEGY', useClass: ZorbitJwtStrategy }
+ * Two registration paths supported:
+ *
+ *   1. (RECOMMENDED, since 0.5.0) `ZorbitAuthModule.forRoot({ jwtSecret })`
+ *      — module wires this strategy automatically; no consumer boilerplate.
+ *
+ *   2. (BACK-COMPAT) Listed in a feature module's `providers:` with
+ *      ConfigModule + JwtModule + PassportModule wired locally. The
+ *      strategy resolves the secret from ConfigService at boot.
+ *
+ * The constructor accepts BOTH options (`@Inject(ZORBIT_AUTH_OPTIONS)`) and
+ * ConfigService (legacy) so existing consumers keep working unchanged.
+ *
+ * If neither is available, the strategy throws at boot — which is loud
+ * and intentional. Silently signing with `undefined` would let invalid
+ * tokens slip through.
  */
 @Injectable()
 export class ZorbitJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
-  constructor(configService: ConfigService) {
+  constructor(
+    @Optional() @Inject(ZORBIT_AUTH_OPTIONS) options?: ZorbitAuthOptions,
+    @Optional() configService?: ConfigService,
+  ) {
+    const secret = ZorbitJwtStrategy.resolveSecret(options, configService);
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET', 'dev-secret-change-in-production'),
+      secretOrKey: secret,
     });
+  }
+
+  /**
+   * Resolution order:
+   *   1. `options.jwtSecret` (when ZorbitAuthModule.forRoot supplied it)
+   *   2. `configService.get('JWT_SECRET')` (back-compat path)
+   *   3. throw — neither available
+   */
+  private static resolveSecret(
+    options?: ZorbitAuthOptions,
+    configService?: ConfigService,
+  ): string {
+    if (options && typeof options.jwtSecret === 'string' && options.jwtSecret.length > 0) {
+      return options.jwtSecret;
+    }
+    if (configService) {
+      const fromConfig = configService.get<string>('JWT_SECRET');
+      if (typeof fromConfig === 'string' && fromConfig.length > 0) {
+        return fromConfig;
+      }
+      // Configured but unset — keep the legacy default to match pre-0.5.0
+      // behaviour. Owner-flagged as intentional in CLAUDE.md.
+      return 'dev-secret-change-in-production';
+    }
+    throw new Error(
+      '[ZorbitJwtStrategy] cannot resolve JWT secret. Either import ' +
+        'ZorbitAuthModule.forRoot({ jwtSecret }) at AppModule level OR ' +
+        'register ConfigModule.forRoot({ isGlobal: true }) with a JWT_SECRET ' +
+        'env var.',
+    );
   }
 
   /**
