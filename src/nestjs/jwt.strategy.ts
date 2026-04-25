@@ -18,8 +18,12 @@ export interface ZorbitJwtPayload {
   name?: string;
   /** Email token (PII-tokenized) */
   email?: string;
-  /** V2 privilege codes resolved at login time */
+  /** V2 privilege codes resolved at login time. Slim JWT (cycle 103+) may omit. */
   privileges?: string[];
+  /** Wildcard privilege claims (e.g. 'platform.admin.all') — slim JWT carriers. */
+  wildcards?: string[];
+  /** Session id pointing to cached privilege/menu/org bundle. */
+  sid?: string;
   /** Legacy role field — prefer privileges; retained for back-compat */
   role?: string;
   /** Token type — only 'access' tokens are valid for API requests.
