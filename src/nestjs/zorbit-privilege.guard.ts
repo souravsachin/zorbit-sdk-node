@@ -8,6 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY, REQUIRED_PRIVILEGES_KEY } from './decorators';
 import { ZorbitJwtPayload } from './jwt.strategy';
+import { hasPrivilege } from '../auth/wildcard-checker';
 
 /**
  * Privilege-based access control guard for all Zorbit services.
@@ -66,16 +67,29 @@ export class ZorbitPrivilegeGuard implements CanActivate {
     }
 
     const userPrivileges = new Set(user.privileges || []);
+    const userWildcards = (user as ZorbitJwtPayload & { wildcards?: string[] }).wildcards || [];
 
-    // Superadmin bypass — user with 'platform.superadmin.bypass' privilege
-    // passes all @RequirePrivileges() checks. Used for platform operators
-    // who need to cross any module's privilege fence without an exhaustive
-    // per-privilege grant.
-    if (userPrivileges.has(SUPERADMIN_BYPASS_PRIVILEGE)) {
+    // Superadmin bypass — explicit privilege OR wildcard claim that covers it.
+    // Cycle 103 slim JWTs carry only wildcards; the legacy explicit grant is
+    // still honoured for back-compat with fat JWTs minted pre-cycle-103.
+    if (
+      userPrivileges.has(SUPERADMIN_BYPASS_PRIVILEGE) ||
+      hasPrivilege({ wildcards: userWildcards }, SUPERADMIN_BYPASS_PRIVILEGE)
+    ) {
       return true;
     }
 
-    const missingPrivileges = requiredPrivileges.filter((p) => !userPrivileges.has(p));
+    // For each required privilege accept either:
+    //   (a) an explicit code in user.privileges, OR
+    //   (b) a wildcard match in user.wildcards / user.privileges
+    const missingPrivileges = requiredPrivileges.filter(
+      (p) =>
+        !userPrivileges.has(p) &&
+        !hasPrivilege(
+          { privileges: user.privileges, wildcards: userWildcards },
+          p,
+        ),
+    );
 
     if (missingPrivileges.length > 0) {
       this.logger.warn(
