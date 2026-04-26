@@ -98,6 +98,123 @@ describe('PrivilegeResolver', () => {
     );
   });
 
+  it('SDK 0.5.10 — 10 calls with same hash → 1 miss + 9 hits, ratio = 0.9', async () => {
+    axiosGet.mockResolvedValueOnce({
+      data: { hash: 'v1-ratio', privileges: ['mod.a.read'] },
+    });
+
+    const r = PrivilegeResolver.getInstance();
+    for (let i = 0; i < 10; i++) {
+      const out = await r.resolve('v1-ratio', 'http://identity:3001', 'tok');
+      expect(out).toEqual(['mod.a.read']);
+    }
+
+    const stats = r.getStats();
+    expect(stats.hits).toBe(9);
+    expect(stats.misses).toBe(1);
+    expect(stats.fetches).toBe(1);
+    expect(stats.hitRatio).toBeCloseTo(0.9, 5);
+    expect(stats.size).toBe(1);
+    expect(stats.evictions).toBe(0);
+    expect(axiosGet).toHaveBeenCalledTimes(1);
+  });
+
+  it('SDK 0.5.10 — getStats() exposes evictions, ttlMs, maxEntries, oldestAgeMs', async () => {
+    const r = PrivilegeResolver.getInstance();
+    const stats = r.getStats();
+    // Defaults
+    expect(stats.ttlMs).toBe(30 * 60 * 1000);
+    expect(stats.maxEntries).toBe(1000);
+    expect(stats.evictions).toBe(0);
+    expect(stats.oldestAgeMs).toBe(0); // empty cache
+    expect(stats.hitRatio).toBe(0); // total=0 -> 0
+  });
+
+  it('SDK 0.5.10 — TTL is configurable via ZORBIT_SDK_PR_TTL_MS', async () => {
+    const before = process.env.ZORBIT_SDK_PR_TTL_MS;
+    process.env.ZORBIT_SDK_PR_TTL_MS = '900000'; // 15 min
+    PrivilegeResolver.__resetForTests();
+
+    const r = PrivilegeResolver.getInstance();
+    expect(r.getTtlMs()).toBe(900_000);
+    expect(r.getStats().ttlMs).toBe(900_000);
+
+    if (before === undefined) {
+      delete process.env.ZORBIT_SDK_PR_TTL_MS;
+    } else {
+      process.env.ZORBIT_SDK_PR_TTL_MS = before;
+    }
+  });
+
+  it('SDK 0.5.10 — invalid TTL env falls back to default (30 min)', async () => {
+    const before = process.env.ZORBIT_SDK_PR_TTL_MS;
+    process.env.ZORBIT_SDK_PR_TTL_MS = 'not-a-number';
+    PrivilegeResolver.__resetForTests();
+
+    const r = PrivilegeResolver.getInstance();
+    expect(r.getTtlMs()).toBe(30 * 60 * 1000);
+
+    if (before === undefined) {
+      delete process.env.ZORBIT_SDK_PR_TTL_MS;
+    } else {
+      process.env.ZORBIT_SDK_PR_TTL_MS = before;
+    }
+  });
+
+  it('SDK 0.5.10 — max entries is configurable via ZORBIT_SDK_PR_MAX_ENTRIES, evictions counted', async () => {
+    const before = process.env.ZORBIT_SDK_PR_MAX_ENTRIES;
+    process.env.ZORBIT_SDK_PR_MAX_ENTRIES = '2';
+    PrivilegeResolver.__resetForTests();
+
+    axiosGet.mockResolvedValueOnce({ data: { hash: 'h1', privileges: ['p1'] } });
+    axiosGet.mockResolvedValueOnce({ data: { hash: 'h2', privileges: ['p2'] } });
+    axiosGet.mockResolvedValueOnce({ data: { hash: 'h3', privileges: ['p3'] } });
+
+    const r = PrivilegeResolver.getInstance();
+    expect(r.getMaxEntries()).toBe(2);
+
+    await r.resolve('h1', 'http://identity:3001', 'tok');
+    await r.resolve('h2', 'http://identity:3001', 'tok');
+    expect(r.getStats().size).toBe(2);
+    expect(r.getStats().evictions).toBe(0);
+
+    // Insert 3rd -> oldest (h1) gets evicted
+    await r.resolve('h3', 'http://identity:3001', 'tok');
+    expect(r.getStats().size).toBe(2);
+    expect(r.getStats().evictions).toBe(1);
+
+    if (before === undefined) {
+      delete process.env.ZORBIT_SDK_PR_MAX_ENTRIES;
+    } else {
+      process.env.ZORBIT_SDK_PR_MAX_ENTRIES = before;
+    }
+  });
+
+  it('SDK 0.5.10 — emitStatsLog() is silent when there has been zero traffic', async () => {
+    const r = PrivilegeResolver.getInstance();
+    const logSpy = jest.spyOn((r as any).logger, 'log').mockImplementation(() => {});
+    r.emitStatsLog();
+    expect(logSpy).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it('SDK 0.5.10 — emitStatsLog() emits one INFO line after traffic', async () => {
+    axiosGet.mockResolvedValueOnce({ data: { hash: 'v1-log', privileges: ['p'] } });
+    const r = PrivilegeResolver.getInstance();
+    await r.resolve('v1-log', 'http://identity:3001', 'tok');
+    await r.resolve('v1-log', 'http://identity:3001', 'tok');
+
+    const logSpy = jest.spyOn((r as any).logger, 'log').mockImplementation(() => {});
+    r.emitStatsLog();
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const msg = logSpy.mock.calls[0][0] as string;
+    expect(msg).toMatch(/\[PrivilegeResolver\] hits=1 misses=1 ratio=0\.500/);
+    expect(msg).toMatch(/evictions=0/);
+    expect(msg).toMatch(/size=1/);
+    expect(msg).toMatch(/ttlMs=/);
+    logSpy.mockRestore();
+  });
+
   it('SDK 0.5.6 — fetch timeout defaults to 10000ms (was 5000ms in 0.5.5) and is honoured by axios.get', async () => {
     // Default (no env override) — must be 10s.
     const before = process.env.ZORBIT_SDK_BY_HASH_TIMEOUT_MS;
