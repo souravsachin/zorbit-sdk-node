@@ -9,6 +9,10 @@ export { Public, IS_PUBLIC_KEY, RequirePrivileges, REQUIRED_PRIVILEGES_KEY } fro
 // JWT Strategy & Payload
 export { ZorbitJwtStrategy, ZorbitJwtPayload } from './jwt.strategy';
 
+// Cycle-105 / E-JWT-SLIM: privilege_set_hash → privileges resolver.
+// Exported so consumers (e.g. health endpoints) can read cache stats.
+export { PrivilegeResolver } from './privilege-resolver';
+
 // Auth dynamic module (since 0.5.0) — one-line consumer wiring.
 // See 00_docs/platform/sdk-di-factory-design.md.
 export { ZorbitAuthModule } from './zorbit-auth.module';
