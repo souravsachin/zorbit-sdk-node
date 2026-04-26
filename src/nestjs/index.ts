@@ -9,6 +9,11 @@ export { Public, IS_PUBLIC_KEY, RequirePrivileges, REQUIRED_PRIVILEGES_KEY } fro
 // JWT Strategy & Payload
 export { ZorbitJwtStrategy, ZorbitJwtPayload } from './jwt.strategy';
 
+// Auth dynamic module (since 0.5.0) — one-line consumer wiring.
+// See 00_docs/platform/sdk-di-factory-design.md.
+export { ZorbitAuthModule } from './zorbit-auth.module';
+export { ZORBIT_AUTH_OPTIONS, ZorbitAuthOptions } from './zorbit-auth-options';
+
 // Base controllers (health / manifest / seed)
 export { ZorbitHealthControllerBase } from './health.controller';
 export { ZorbitManifestControllerBase } from './manifest.controller';
