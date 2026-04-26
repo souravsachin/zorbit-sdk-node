@@ -52,7 +52,9 @@ describe('ZorbitAuthModule.forRoot()', () => {
 
     // Exports: same shape as providers minus the options object,
     // plus PassportModule for downstream re-import convenience.
+    // Cycle-104: Reflector exported so consumer @UseGuards() can resolve.
     const exports = dm.exports ?? [];
+    expect(exports).toContain(Reflector);
     expect(exports).toContain(ZorbitJwtStrategy);
     expect(exports).toContain(ZorbitJwtGuard);
     expect(exports).toContain(ZorbitNamespaceGuard);

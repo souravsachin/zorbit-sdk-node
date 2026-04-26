@@ -95,6 +95,13 @@ export class ZorbitAuthModule {
         ZorbitPrivilegeGuard,
       ],
       exports: [
+        // Cycle-104 follow-on fix: export Reflector so consumer modules
+        // that reference the guards via @UseGuards() can resolve guard
+        // constructor params from their own injector scope. Without
+        // this, Nest fails with "Nest can't resolve dependencies of the
+        // ZorbitPrivilegeGuard (?). ... in the <ConsumerModule> context"
+        // even though the guard is provided in this global module.
+        Reflector,
         ZorbitJwtStrategy,
         ZorbitJwtGuard,
         ZorbitNamespaceGuard,
