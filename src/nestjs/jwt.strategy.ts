@@ -58,6 +58,19 @@ export class ZorbitJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     @Optional() @Inject(ZORBIT_AUTH_OPTIONS) options?: ZorbitAuthOptions,
     @Optional() configService?: ConfigService,
   ) {
+    // BACK-COMPAT GUARD (0.5.3): existing services subclass ZorbitJwtStrategy
+    // and call `super(configService)` — passing ConfigService as the FIRST
+    // positional arg. That used to land in `options` and silently fall
+    // through to the throw branch. Detect this case at runtime and treat
+    // the misplaced ConfigService as the configService param.
+    if (
+      options &&
+      typeof (options as any).get === 'function' &&
+      typeof (options as any).jwtSecret === 'undefined'
+    ) {
+      configService = options as unknown as ConfigService;
+      options = undefined;
+    }
     const secret = ZorbitJwtStrategy.resolveSecret(options, configService);
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -88,11 +101,21 @@ export class ZorbitJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       // behaviour. Owner-flagged as intentional in CLAUDE.md.
       return 'dev-secret-change-in-production';
     }
+    // FINAL FALLBACK (0.5.3): NestJS DI didn't inject ConfigService here
+    // (e.g. subclass declared a single arg but Nest couldn't resolve it,
+    // or ConfigModule.forRoot wasn't called). Fall back to process.env so
+    // a service that has JWT_SECRET in its container env still boots.
+    // Without this, every consumer would require ZorbitAuthModule.forRoot
+    // edits in source — too invasive for the running fleet.
+    const envSecret = process.env.JWT_SECRET;
+    if (typeof envSecret === 'string' && envSecret.length > 0) {
+      return envSecret;
+    }
     throw new Error(
       '[ZorbitJwtStrategy] cannot resolve JWT secret. Either import ' +
         'ZorbitAuthModule.forRoot({ jwtSecret }) at AppModule level OR ' +
         'register ConfigModule.forRoot({ isGlobal: true }) with a JWT_SECRET ' +
-        'env var.',
+        'env var, or set process.env.JWT_SECRET.',
     );
   }
 

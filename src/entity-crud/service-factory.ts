@@ -12,7 +12,25 @@
  * naming.
  */
 import type { Repository } from 'typeorm';
-import { In, Like, Between, MoreThanOrEqual, LessThanOrEqual, Not } from 'typeorm';
+// Lazy typeorm runtime import: loaded only when entity-crud features are actually
+// invoked. Top-level eager `import { In, Like, ... } from 'typeorm'` caused every
+// consumer that does `require('@zorbit-platform/sdk-node')` to hit
+// `Cannot find module 'typeorm'` even when they don't use entity-crud.
+// (Cycle 105 — VM 110 PM2 crash-loop fix, 2026-04-26.)
+let _typeormOps: any | null = null;
+function tormOps(): any {
+  if (!_typeormOps) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _typeormOps = require('typeorm');
+  }
+  return _typeormOps;
+}
+const In = (...args: any[]) => tormOps().In(...args);
+const Like = (...args: any[]) => tormOps().Like(...args);
+const Between = (...args: any[]) => tormOps().Between(...args);
+const MoreThanOrEqual = (...args: any[]) => tormOps().MoreThanOrEqual(...args);
+const LessThanOrEqual = (...args: any[]) => tormOps().LessThanOrEqual(...args);
+const Not = (...args: any[]) => tormOps().Not(...args);
 import type { EntityDeclaration } from './entity-schema';
 import { generateHashId } from '../utils/hash-id';
 import type { ParsedQuery, FilterShape } from './filter-parser';
