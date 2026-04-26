@@ -27,6 +27,24 @@ interface CacheEntry {
 const DEFAULT_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const DEFAULT_MAX_ENTRIES = 1000;
 
+/**
+ * Default HTTP timeout for the by-hash lookup. Bumped from 5s → 10s in
+ * SDK 0.5.6 because identity's `/api/v1/G/privileges/by-hash/:hash` endpoint
+ * was observed at p95 5.0–6.5s under load (cycle-105/E-JWT-SLIM rollout,
+ * 2026-04-25). Override via env: `ZORBIT_SDK_BY_HASH_TIMEOUT_MS`.
+ *
+ * Identity-side perf work is tracked separately (target p95 < 500ms with
+ * server-side cache); once that lands, the timeout can be tightened back.
+ */
+const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
+
+function resolveFetchTimeoutMs(): number {
+  const raw = process.env.ZORBIT_SDK_BY_HASH_TIMEOUT_MS;
+  if (!raw) return DEFAULT_FETCH_TIMEOUT_MS;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_FETCH_TIMEOUT_MS;
+}
+
 export class PrivilegeResolver {
   private static instance: PrivilegeResolver | null = null;
   private readonly logger = new Logger(PrivilegeResolver.name);
@@ -36,10 +54,20 @@ export class PrivilegeResolver {
   private fetches = 0;
   private fetchFailures = 0;
 
+  private readonly fetchTimeoutMs: number;
+
   private constructor(
     private readonly ttlMs: number = DEFAULT_TTL_MS,
     private readonly maxEntries: number = DEFAULT_MAX_ENTRIES,
-  ) {}
+    fetchTimeoutMs: number = resolveFetchTimeoutMs(),
+  ) {
+    this.fetchTimeoutMs = fetchTimeoutMs;
+  }
+
+  /** Test/diagnostic — read the resolved HTTP timeout for the by-hash fetch. */
+  getFetchTimeoutMs(): number {
+    return this.fetchTimeoutMs;
+  }
 
   /**
    * Singleton — every service process has one resolver shared across requests.
@@ -125,7 +153,7 @@ export class PrivilegeResolver {
       // lazy so jest-style mocks can override it cleanly.
       const axios = (await import('axios')).default;
       const response = await axios.get<{ hash: string; privileges: string[] }>(url, {
-        timeout: 5000,
+        timeout: this.fetchTimeoutMs,
         headers: { Authorization: `Bearer ${bearerToken}` },
       });
       const list = response.data?.privileges;
