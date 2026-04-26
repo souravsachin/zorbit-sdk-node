@@ -22,7 +22,14 @@ jest.mock('axios', () => ({ default: { get: axiosGet }, get: axiosGet }));
 
 import { PrivilegeResolver } from '../src/nestjs/privilege-resolver';
 import { ZorbitJwtStrategy, ZorbitJwtPayload } from '../src/nestjs/jwt.strategy';
-import { UnauthorizedException } from '@nestjs/common';
+import { ZorbitJwtGuard } from '../src/nestjs/zorbit-jwt.guard';
+import { Reflector } from '@nestjs/core';
+import {
+  UnauthorizedException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 
 describe('PrivilegeResolver', () => {
   beforeEach(() => {
@@ -174,5 +181,86 @@ describe('ZorbitJwtStrategy.validate()', () => {
     const out = await s.validate({ headers: { authorization: 'Bearer x' } }, payload);
     expect(out).toEqual(payload);
     expect(axiosGet).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ZorbitJwtGuard.handleRequest 401-vs-500 mapping.
+ *
+ * Cycle-105 / E-JWT-SLIM (SDK 0.5.5) — soldier (i) reported that stale tokens
+ * surfaced as 500 instead of 401 on `/api/authorization/.../roles`. Root
+ * cause: pre-fix code threw the raw passport `err` (a non-HttpException
+ * Error) directly, which Nest's BaseExceptionFilter mapped to 500.
+ * Verifies all four call paths now map to 401.
+ */
+describe('ZorbitJwtGuard.handleRequest — 401 mapping', () => {
+  function makeGuard(): ZorbitJwtGuard {
+    return new ZorbitJwtGuard(new Reflector());
+  }
+
+  it('passes user through when authenticated (no err, user present)', () => {
+    const g = makeGuard();
+    const user = { sub: 'U-1', org: 'O-1', type: 'access' as const };
+    const out = g.handleRequest(null, user, undefined);
+    expect(out).toEqual(user);
+  });
+
+  it('non-HttpException Error from passport → 401 (was 500)', () => {
+    const g = makeGuard();
+    const err = new Error('jwt malformed');
+    expect(() => g.handleRequest(err, false, undefined)).toThrow(
+      UnauthorizedException,
+    );
+    try {
+      g.handleRequest(err, false, undefined);
+    } catch (e) {
+      expect(e).toBeInstanceOf(HttpException);
+      expect((e as HttpException).getStatus()).toBe(HttpStatus.UNAUTHORIZED);
+      expect((e as Error).message).toBe('jwt malformed');
+    }
+  });
+
+  it('TokenExpiredError-style info → 401', () => {
+    const g = makeGuard();
+    // passport-jwt presents expired tokens via `info: TokenExpiredError`,
+    // err is null. Pre-fix this still went to the right side of `||` and
+    // worked; we keep that path covered.
+    const info = new Error('jwt expired');
+    expect(() => g.handleRequest(null, false, info)).toThrow(
+      UnauthorizedException,
+    );
+    try {
+      g.handleRequest(null, false, info);
+    } catch (e) {
+      expect((e as HttpException).getStatus()).toBe(HttpStatus.UNAUTHORIZED);
+      expect((e as Error).message).toBe('jwt expired');
+    }
+  });
+
+  it('No-auth-token (no err, no user, info is string-like) → 401', () => {
+    const g = makeGuard();
+    const out = (() => {
+      try {
+        g.handleRequest(null, false, 'No auth token');
+        return null;
+      } catch (e) {
+        return e;
+      }
+    })();
+    expect(out).toBeInstanceOf(HttpException);
+    expect((out as HttpException).getStatus()).toBe(HttpStatus.UNAUTHORIZED);
+    expect((out as Error).message).toBe('No auth token');
+  });
+
+  it('Custom HttpException from upstream is re-thrown verbatim (not double-wrapped)', () => {
+    const g = makeGuard();
+    const custom = new ForbiddenException('Account locked'); // 403, not 401
+    try {
+      g.handleRequest(custom, false, undefined);
+    } catch (e) {
+      // Exact same instance — no wrapping. Status preserved as 403.
+      expect(e).toBe(custom);
+      expect((e as HttpException).getStatus()).toBe(HttpStatus.FORBIDDEN);
+    }
   });
 });
