@@ -46,6 +46,7 @@
  *   cookbook.
  */
 import { DynamicModule, Module } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { PassportModule } from '@nestjs/passport';
 import { ZORBIT_AUTH_OPTIONS, ZorbitAuthOptions } from './zorbit-auth-options';
 import { ZorbitJwtStrategy } from './jwt.strategy';
@@ -79,6 +80,15 @@ export class ZorbitAuthModule {
       imports: [PassportModule.register({ defaultStrategy: 'jwt' })],
       providers: [
         { provide: ZORBIT_AUTH_OPTIONS, useValue: options },
+        // Cycle-104 fix: ZorbitNamespaceGuard + ZorbitPrivilegeGuard depend on
+        // Reflector (from @nestjs/core). In a normal app Reflector is part of
+        // the root injector, but a global DynamicModule has its own scope and
+        // does NOT inherit Reflector — so without explicit provision Nest
+        // throws "Nest can't resolve dependencies of the ZorbitNamespaceGuard
+        // (?). Please make sure that the argument Reflector at index [0] is
+        // available in the ZorbitAuthModule context." Providing it here is the
+        // standard Nest pattern (Reflector is a stateless utility).
+        Reflector,
         ZorbitJwtStrategy,
         ZorbitJwtGuard,
         ZorbitNamespaceGuard,

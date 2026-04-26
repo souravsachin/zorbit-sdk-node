@@ -17,6 +17,7 @@ import { ZorbitJwtStrategy } from '../src/nestjs/jwt.strategy';
 import { ZorbitJwtGuard } from '../src/nestjs/zorbit-jwt.guard';
 import { ZorbitNamespaceGuard } from '../src/nestjs/zorbit-namespace.guard';
 import { ZorbitPrivilegeGuard } from '../src/nestjs/zorbit-privilege.guard';
+import { Reflector } from '@nestjs/core';
 import { PassportModule } from '@nestjs/passport';
 
 describe('ZorbitAuthModule.forRoot()', () => {
@@ -31,8 +32,9 @@ describe('ZorbitAuthModule.forRoot()', () => {
     expect(passportImport).toBeDefined();
     expect(passportImport.module).toBe(PassportModule);
 
-    // Providers: options-value + strategy + 3 guards
+    // Providers: options-value + Reflector (cycle-104 fix) + strategy + 3 guards
     const providers = dm.providers ?? [];
+    expect(providers).toContain(Reflector);
     expect(providers).toContain(ZorbitJwtStrategy);
     expect(providers).toContain(ZorbitJwtGuard);
     expect(providers).toContain(ZorbitNamespaceGuard);
