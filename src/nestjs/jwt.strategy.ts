@@ -214,6 +214,43 @@ export class ZorbitJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
     // Path 2 — slim token: resolve hash → privileges.
     if (typeof payload.privilege_set_hash === 'string' && payload.privilege_set_hash.length > 0) {
+      // CRITICAL FIX (cycle-105 / SDK 0.5.7) — by-hash self-call detection.
+      //
+      // Architectural recursion: identity's `GET /api/v1/G/privileges/by-hash/:hash`
+      // is decorated with `@UseGuards(ZorbitJwtGuard)`. When a slim-token request
+      // hits that endpoint, this strategy's validate() fires; if we then proceed
+      // to resolve via `PrivilegeResolver.resolve()`, the resolver HTTP-calls the
+      // SAME endpoint, which fires the SAME strategy on the next layer, and so
+      // on. Each layer's resolver cache is empty until the outermost call returns
+      // — meaning every cold-cache hit triggers an N-deep recursion that times
+      // out instead of resolving.
+      //
+      // Fix: when the incoming request IS the by-hash endpoint, skip privilege
+      // resolution entirely. The by-hash controller's own logic doesn't need
+      // resolved privileges to do its job — it only needs the JWT signature
+      // verified (already done by passport-jwt before validate() is called) and
+      // the user.sub / user.org claims (already on the payload). Returning a
+      // synthetic empty privileges array short-circuits the recursion at level 1.
+      //
+      // See soldier (r) finding 2026-04-25 20:23 +07 + soldier (v) fix
+      // 2026-04-26 21:18 +07.
+      const reqUrl: string =
+        (typeof req?.originalUrl === 'string' && req.originalUrl) ||
+        (typeof req?.url === 'string' && req.url) ||
+        '';
+      // Strip query string if present so it doesn't break the regex.
+      const pathOnly = reqUrl.split('?')[0];
+      // Match both with and without the global API prefix and trailing path-segments.
+      // Examples that must match:
+      //   /api/v1/G/privileges/by-hash/v1-79f7d68551d0
+      //   /api/identity/api/v1/G/privileges/by-hash/v1-abc
+      //   /api/v1/G/privileges/by-hash/v1-xyz/
+      if (/\/api\/v1\/G\/privileges\/by-hash\/[^/]+\/?$/.test(pathOnly)) {
+        // Don't recurse. Return synthetic payload with empty privileges; the
+        // by-hash controller does its own re-resolution via AuthService.
+        return { ...payload, privileges: [] };
+      }
+
       // Extract raw Bearer token from the request to forward to identity.
       const authHeader: string | undefined = req?.headers?.authorization;
       const bearer =

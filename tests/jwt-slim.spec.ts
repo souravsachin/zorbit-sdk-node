@@ -212,6 +212,130 @@ describe('ZorbitJwtStrategy.validate()', () => {
     expect(out).toEqual(payload);
     expect(axiosGet).not.toHaveBeenCalled();
   });
+
+  /**
+   * SDK 0.5.7 — by-hash self-call detection.
+   *
+   * When the SDK strategy fires INSIDE identity's own
+   * `GET /api/v1/G/privileges/by-hash/:hash` handler (because that endpoint
+   * is decorated with @UseGuards(ZorbitJwtGuard)), it must NOT call
+   * PrivilegeResolver.resolve() — that would HTTP-call the same endpoint,
+   * triggering N-deep recursion that times out under cold cache.
+   *
+   * The fix detects the request URL and short-circuits with empty privileges.
+   *
+   * Bug history: soldier (r) finding 2026-04-25 20:23 +07; soldier (s)
+   * cache-flush at 21:16 +07 surfaced the bug fleet-wide; this fix landed
+   * 2026-04-26 by soldier (v).
+   */
+  describe('SDK 0.5.7 — by-hash self-call detection (no-recursion guarantee)', () => {
+    const slimPayload: ZorbitJwtPayload = {
+      sub: 'U-AAA',
+      org: 'O-BBB',
+      type: 'access',
+      privilege_set_hash: 'v1-feedf00d',
+    };
+
+    it('skips PrivilegeResolver when request URL is /api/v1/G/privileges/by-hash/:hash', async () => {
+      const s = makeStrategy();
+      const req = {
+        url: '/api/v1/G/privileges/by-hash/v1-feedf00d',
+        headers: { authorization: 'Bearer raw-jwt-string' },
+      };
+      const out = await s.validate(req, slimPayload);
+      // Must NOT have called resolver
+      expect(axiosGet).not.toHaveBeenCalled();
+      expect(out.privileges).toEqual([]);
+      expect(out.privilege_set_hash).toBe('v1-feedf00d');
+      // Original payload claims preserved
+      expect(out.sub).toBe('U-AAA');
+      expect(out.org).toBe('O-BBB');
+    });
+
+    it('skips PrivilegeResolver when originalUrl is the by-hash path (Express-style proxy)', async () => {
+      const s = makeStrategy();
+      const req = {
+        originalUrl: '/api/identity/api/v1/G/privileges/by-hash/v1-abc123',
+        url: '/api/v1/G/privileges/by-hash/v1-abc123',
+        headers: { authorization: 'Bearer raw-jwt-string' },
+      };
+      const out = await s.validate(req, slimPayload);
+      expect(axiosGet).not.toHaveBeenCalled();
+      expect(out.privileges).toEqual([]);
+    });
+
+    it('skips PrivilegeResolver when by-hash URL has trailing slash', async () => {
+      const s = makeStrategy();
+      const req = {
+        url: '/api/v1/G/privileges/by-hash/v1-feedf00d/',
+        headers: { authorization: 'Bearer x' },
+      };
+      const out = await s.validate(req, slimPayload);
+      expect(axiosGet).not.toHaveBeenCalled();
+      expect(out.privileges).toEqual([]);
+    });
+
+    it('skips PrivilegeResolver when by-hash URL has query string', async () => {
+      const s = makeStrategy();
+      const req = {
+        url: '/api/v1/G/privileges/by-hash/v1-feedf00d?cache=skip',
+        headers: { authorization: 'Bearer x' },
+      };
+      const out = await s.validate(req, slimPayload);
+      expect(axiosGet).not.toHaveBeenCalled();
+      expect(out.privileges).toEqual([]);
+    });
+
+    it('STILL calls PrivilegeResolver for non-by-hash URLs (normal slim-token flow)', async () => {
+      axiosGet.mockResolvedValueOnce({
+        data: { hash: 'v1-feedf00d', privileges: ['mod.a.read', 'mod.b.write'] },
+      });
+      const s = makeStrategy();
+      const req = {
+        url: '/api/v1/O/O-DFLT/roles',
+        headers: { authorization: 'Bearer raw-jwt-string' },
+      };
+      const out = await s.validate(req, slimPayload);
+      expect(axiosGet).toHaveBeenCalledTimes(1);
+      expect(out.privileges).toEqual(['mod.a.read', 'mod.b.write']);
+    });
+
+    it('does NOT match unrelated URLs that contain the substring "by-hash" (regression guard)', async () => {
+      // E.g. a fictional endpoint /api/v1/G/users/by-hash-id/:id should NOT
+      // be treated as the privilege-by-hash endpoint.
+      axiosGet.mockResolvedValueOnce({
+        data: { hash: 'v1-feedf00d', privileges: ['mod.x.read'] },
+      });
+      const s = makeStrategy();
+      const req = {
+        url: '/api/v1/G/users/by-hash-id/some-other-id',
+        headers: { authorization: 'Bearer raw-jwt-string' },
+      };
+      const out = await s.validate(req, slimPayload);
+      // Resolver was called → the URL did NOT match the by-hash regex
+      expect(axiosGet).toHaveBeenCalledTimes(1);
+      expect(out.privileges).toEqual(['mod.x.read']);
+    });
+
+    it('legacy fat token still passes through even when URL is by-hash', async () => {
+      // A fat token should still bypass the resolver path entirely; the
+      // self-call detection is irrelevant there.
+      const s = makeStrategy();
+      const fatPayload: ZorbitJwtPayload = {
+        sub: 'U-AAA',
+        org: 'O-BBB',
+        type: 'access',
+        privileges: ['platform.superadmin.bypass'],
+      };
+      const req = {
+        url: '/api/v1/G/privileges/by-hash/v1-anything',
+        headers: { authorization: 'Bearer raw-jwt-string' },
+      };
+      const out = await s.validate(req, fatPayload);
+      expect(axiosGet).not.toHaveBeenCalled();
+      expect(out.privileges).toEqual(['platform.superadmin.bypass']);
+    });
+  });
 });
 
 /**
