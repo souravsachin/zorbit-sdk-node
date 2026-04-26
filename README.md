@@ -354,6 +354,75 @@ const hasAccess = validateNamespaceAccess(
 );
 ```
 
+### N. Column-level encryption (AES-256-GCM)
+
+Helpers for encrypting PII fields at rest. Primary path is app-layer using
+node `crypto`; the Postgres `pgcrypto` extension is installed on `zs-pg` as
+an emergency / audit decryption fallback (see
+`02_repos/zorbit-cli/scripts/post-deploy-bootstrap.sh`).
+
+```typescript
+import {
+  EncryptionService,
+  ZorbitEncryptionModule,
+  Encrypted,
+  setEncryptionService,
+  encryptAll,
+  decryptAll,
+} from '@zorbit-platform/sdk-node';
+
+// 1. Generate a key once, store as base64 in your secret manager
+//    EncryptionService.generateKey()  // -> "h2k+...=="
+
+// 2. NestJS module — reads PII_ENCRYPTION_KEY from env
+@Module({
+  imports: [ZorbitEncryptionModule.forRoot()],
+})
+class AppModule {}
+
+// 3. Use the service directly
+const svc = new EncryptionService({
+  activeKeyId: 'k1',
+  keys: [{ keyId: 'k1', material: Buffer.from(b64, 'base64') }],
+});
+const ct = await svc.encrypt('john@example.com');
+// -> "v1:k1:<iv>:<tag>:<cipher>"
+const pt = await svc.decrypt(ct);
+// -> "john@example.com"
+
+// 4. TypeORM entity decorator
+@Entity()
+class Customer {
+  @PrimaryGeneratedColumn() id!: number;
+  @Column({ type: 'text' })
+  @Encrypted()
+  email!: string;
+}
+
+// In a TypeORM subscriber or BeforeInsert/BeforeUpdate hook:
+await encryptAll(customer, ['email']);
+
+// In an AfterLoad hook (or before serialising the response):
+await decryptAll(customer, ['email']);
+```
+
+Envelope format: `v1:<keyId>:<base64(iv)>:<base64(authTag)>:<base64(ciphertext)>`
+
+Key rotation: register old keys (decryption-only) plus a new active key. The
+`keyId` in the envelope selects which key to use at decryption time.
+
+Caveats:
+- Each encrypt produces a fresh IV → equality lookups via `WHERE col = '...'`
+  will NOT work. Use a deterministic HMAC of the plaintext as a separate
+  index column for lookups.
+- `@Encrypted()` is sync but encrypt/decrypt are async. Use `encryptAll` /
+  `decryptAll` helpers in TypeORM hooks rather than auto-magic on read.
+
+Environment variables:
+- `PII_ENCRYPTION_KEY` — base64 32-byte key (single-key mode)
+- `PII_ENCRYPTION_KEYS` — JSON array `[{keyId, material}]` for rotation
+- `PII_ENCRYPTION_ACTIVE_KEY_ID` — selects active key from the array
+
 ---
 
 ## Environment Variables
@@ -370,6 +439,9 @@ const hasAccess = validateNamespaceAccess(
 | DATABASE_URL | No | - | Database connection string |
 | MONGODB_URI | No | - | MongoDB connection string |
 | PII_VAULT_URL | No | http://localhost:3105 | PII Vault service URL |
+| PII_ENCRYPTION_KEY | No | - | Base64 32-byte AES-256-GCM key (single-key mode) |
+| PII_ENCRYPTION_KEYS | No | - | JSON array `[{keyId, material}]` for key rotation |
+| PII_ENCRYPTION_ACTIVE_KEY_ID | No | first | Active key id in `PII_ENCRYPTION_KEYS` |
 
 ## Development
 
