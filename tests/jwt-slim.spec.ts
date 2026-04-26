@@ -97,6 +97,36 @@ describe('PrivilegeResolver', () => {
       }),
     );
   });
+
+  it('SDK 0.5.6 — fetch timeout defaults to 10000ms (was 5000ms in 0.5.5) and is honoured by axios.get', async () => {
+    // Default (no env override) — must be 10s.
+    const before = process.env.ZORBIT_SDK_BY_HASH_TIMEOUT_MS;
+    delete process.env.ZORBIT_SDK_BY_HASH_TIMEOUT_MS;
+    PrivilegeResolver.__resetForTests();
+
+    axiosGet.mockResolvedValueOnce({ data: { hash: 'v1-t', privileges: [] } });
+    const r = PrivilegeResolver.getInstance();
+    expect(r.getFetchTimeoutMs()).toBe(10_000);
+
+    await r.resolve('v1-t', 'http://identity:3001', 'tok');
+    expect(axiosGet).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ timeout: 10_000 }),
+    );
+
+    // Override via env — singleton must be reset so the new value is read.
+    process.env.ZORBIT_SDK_BY_HASH_TIMEOUT_MS = '15000';
+    PrivilegeResolver.__resetForTests();
+    const r2 = PrivilegeResolver.getInstance();
+    expect(r2.getFetchTimeoutMs()).toBe(15_000);
+
+    // Restore env to pre-test state.
+    if (before === undefined) {
+      delete process.env.ZORBIT_SDK_BY_HASH_TIMEOUT_MS;
+    } else {
+      process.env.ZORBIT_SDK_BY_HASH_TIMEOUT_MS = before;
+    }
+  });
 });
 
 describe('ZorbitJwtStrategy.validate()', () => {
