@@ -144,6 +144,21 @@ export {
   SecretsResolver,
 } from './integration-runner';
 
+// Encryption — column-level AES-256-GCM helper (PII at rest, SDK 0.5.9+)
+export {
+  EncryptionService,
+  EncryptionServiceOptions,
+  EncryptionKey,
+  ZorbitEncryptionModule,
+  ZorbitEncryptionModuleOptions,
+  ZORBIT_ENCRYPTION_SERVICE,
+  Encrypted,
+  setEncryptionService,
+  getEncryptionService,
+  encryptAll,
+  decryptAll,
+} from './encryption';
+
 // Entity CRUD — config-driven REST CRUD factory (EPIC 10)
 export {
   ZorbitEntityCrudModule,
