@@ -15,7 +15,11 @@
  *   ]
  */
 import { DynamicModule, Logger, Module } from '@nestjs/common';
-import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+// Lazy @nestjs/typeorm import — only loaded when ZorbitEntityCrudModule.register()
+// is actually invoked. Eager top-level `import` caused every consumer of
+// `@zorbit-platform/sdk-node` to fail with `Cannot find module '@nestjs/typeorm'`
+// even when the consumer never used entity-crud features.
+// (Cycle 105 — VM 110 PM2 crash-loop fix, 2026-04-26.)
 import { loadEntitiesFromDir } from './entity-loader';
 import { parseEntityDeclaration } from './entity-schema';
 import type { EntityDeclaration } from './entity-schema';
@@ -44,6 +48,11 @@ export interface ZorbitEntityCrudRegisterOptions {
 export class ZorbitEntityCrudModule {
   static register(opts: ZorbitEntityCrudRegisterOptions): DynamicModule {
     const logger = new Logger('ZorbitEntityCrudModule');
+
+    // Lazy-load @nestjs/typeorm — required only at register() time so that
+    // consumers who never invoke this module don't pay the import cost.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getRepositoryToken, TypeOrmModule } = require('@nestjs/typeorm');
 
     const declarations: EntityDeclaration[] = [];
     if (opts.declarations && opts.declarations.length > 0) {
